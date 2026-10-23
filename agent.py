@@ -1,8 +1,8 @@
 """会议纪要问答 Agent。
 
-核心是一个循环：
-    问模型 -> 模型要调工具 -> 执行工具 -> 把结果塞回去 -> 再问模型
-一直到模型不再要工具，直接给出答案为止。
+一轮循环：把问题和工具 schema 发给模型 -> 模型返回 tool_calls ->
+本地执行 -> 结果以 role="tool" 写回 messages -> 再次请求模型。
+模型不再请求工具时返回最终回答。
 """
 
 import json
@@ -13,7 +13,7 @@ from openai import OpenAI
 from tools import TOOL_SCHEMAS, dispatch
 
 MODEL = "deepseek-chat"
-MAX_ROUNDS = 5          # 防止模型一直要工具，死循环
+MAX_ROUNDS = 5          # 上限，避免模型反复请求工具导致不收敛
 
 SYSTEM_PROMPT = """你是一个会议纪要助手。
 
@@ -27,12 +27,12 @@ SYSTEM_PROMPT = """你是一个会议纪要助手。
 def make_client():
     key = os.environ.get("DEEPSEEK_API_KEY")
     if not key:
-        raise SystemExit("没有读到 DEEPSEEK_API_KEY，先在终端 export 一下")
+        raise SystemExit("未读取到 DEEPSEEK_API_KEY，请先设置环境变量")
     return OpenAI(api_key=key, base_url="https://api.deepseek.com")
 
 
 def run(question, verbose=True):
-    """跑一次完整的 Agent 循环，返回最终答案。"""
+    """执行一次完整的 Agent 循环，返回最终回答。"""
     client = make_client()
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -48,20 +48,19 @@ def run(question, verbose=True):
         msg = response.choices[0].message
         messages.append(msg)
 
-        # ---- 这里就是循环的判断 ----
         if not msg.tool_calls:
             if verbose:
-                print(f"[第 {round_no} 轮] 模型不要工具了，给出答案\n")
+                print(f"[第 {round_no} 轮] 无工具请求，返回最终回答\n")
             return msg.content
 
-        # 模型要调工具：一个一个执行，把结果塞回对话
+        # 模型请求了工具：逐个执行并把结果写回 messages
         for call in msg.tool_calls:
             name = call.function.name
             args = json.loads(call.function.arguments)
             result = dispatch(name, args)
 
             if verbose:
-                print(f"[第 {round_no} 轮] 模型要调工具: {name}({args})")
+                print(f"[第 {round_no} 轮] 工具请求: {name}({args})")
                 print(f"           工具返回 {len(result) if isinstance(result, list) else 1} 条\n")
 
             messages.append({

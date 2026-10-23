@@ -1,27 +1,23 @@
-"""Agent 可以调用的工具。
+"""Agent 可调用的工具。
 
-每个工具就是一个普通的 Python 函数。
-模型看到的是下面 TOOL_SCHEMAS 里的「说明书」，
-决定要调哪个之后，由 dispatch() 真正执行。
+每个工具是一个普通的 Python 函数。模型只能看到 TOOL_SCHEMAS 中的
+声明，决定调用哪一个后由 dispatch() 实际执行。
 """
 
 from data import NOTES
 
 
-# ---------- 工具 1：列出所有会议 ----------
+# ---------- 工具：列出会议 ----------
 
 def list_meetings():
-    """列出所有会议的日期和标题，不含正文。"""
+    """返回所有会议的日期与标题，不含正文。"""
     return [{"date": n["date"], "title": n["title"]} for n in NOTES]
 
 
-# ---------- 工具 2：按关键词搜索会议纪要 ----------
+# ---------- 工具：按关键词检索纪要 ----------
 
 def search_notes(keyword):
-    """找出正文里包含 keyword 的会议，返回日期、标题和正文。
-
-    找不到时返回空列表 []。
-    """
+    """返回正文包含 keyword 的会议（日期、标题、正文）；无匹配时返回 []。"""
     results = []
     for n in NOTES:
         if keyword in n["content"]:
@@ -29,7 +25,7 @@ def search_notes(keyword):
     return results
 
 
-# ---------- 模型看到的「说明书」 ----------
+# ---------- 工具声明（传给模型） ----------
 
 TOOL_SCHEMAS = [
     {
@@ -62,7 +58,7 @@ TOOL_SCHEMAS = [
 ]
 
 
-# ---------- 名字 → 函数 ----------
+# ---------- 名称到实现的映射 ----------
 
 REGISTRY = {
     "list_meetings": list_meetings,
@@ -71,7 +67,7 @@ REGISTRY = {
 
 
 def dispatch(name, args):
-    """按模型给的名字和参数，真正执行对应的函数。"""
+    """按模型给出的名称和参数执行对应函数。"""
     if name not in REGISTRY:
-        return {"error": f"没有叫 {name} 的工具"}
+        return {"error": f"未注册的工具: {name}"}
     return REGISTRY[name](**args)
